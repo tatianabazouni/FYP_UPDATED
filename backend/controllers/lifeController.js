@@ -3,7 +3,7 @@ import LifeChapter from "../models/LifeChapter.js";
 import Memory from "../models/Memory.js";
 import { awardXP } from "../services/gamificationService.js";
 
-const mapMemory = (memory) => ({ ...memory.toObject(), id: memory._id, chapterId: memory.chapter });
+const mapMemory = (memory) => ({ ...memory.toObject(), id: memory._id, chapterId: memory.chapter, imageUrl: memory.mediaUrl, image: memory.mediaUrl });
 
 const ensureCapsule = async (userId) => {
   return LifeCapsule.findOneAndUpdate(
@@ -63,9 +63,26 @@ export const getMemories = async (req, res) => {
 };
 
 export const createMemory = async (req, res) => {
-  const chapterId = req.body.chapterId || req.body.chapter;
-  const chapter = await LifeChapter.findOne({ _id: chapterId, user: req.user._id });
-  if (!chapter) return res.status(400).json({ message: "Valid chapter is required" });
+  let chapterId = req.body.chapterId || req.body.chapter;
+  let chapter = chapterId
+    ? await LifeChapter.findOne({ _id: chapterId, user: req.user._id })
+    : null;
+
+  if (!chapter) {
+    const capsule = await ensureCapsule(req.user._id);
+    chapter = await LifeChapter.findOneAndUpdate(
+      { user: req.user._id, title: "Unsorted Memories" },
+      {
+        $setOnInsert: {
+          title: "Unsorted Memories",
+          icon: "🧠",
+          lifeCapsule: capsule._id,
+        },
+      },
+      { upsert: true, new: true }
+    );
+    chapterId = chapter._id;
+  }
 
   const memory = await Memory.create({
     user: req.user._id,
@@ -73,7 +90,7 @@ export const createMemory = async (req, res) => {
     title: req.body.title,
     description: req.body.description,
     type: req.body.type,
-    mediaUrl: req.body.mediaUrl,
+    mediaUrl: req.body.mediaUrl || req.body.imageUrl || req.body.image,
     date: req.body.date,
     location: req.body.location,
     people: req.body.people,
