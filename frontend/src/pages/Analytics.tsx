@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { Camera, Star, Globe, Flame, Trophy, Milestone, Sparkles, Heart, BarChart3, Brain, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
+import { getAnalytics } from "@/api/analyticsApi";
 
 interface LifeStat { label: string; value: number; icon: typeof Camera; color: string; }
 interface BalanceDataPoint { subject: string; value: number; }
@@ -70,17 +71,39 @@ const AiInsightCard = ({ title, insight }: { title: string; insight: string }) =
 );
 
 const Analytics = () => {
-  const [stats] = useState<LifeStat[]>([
+  const [stats, setStats] = useState<LifeStat[]>([
     { label: "Memories Saved", value: 0, icon: Camera, color: "text-accent" },
     { label: "Dreams Achieved", value: 0, icon: Star, color: "text-golden" },
     { label: "Countries Visited", value: 0, icon: Globe, color: "text-calm" },
     { label: "Challenges Done", value: 0, icon: Flame, color: "text-amber" },
     { label: "Milestones", value: 0, icon: Milestone, color: "text-primary" },
   ]);
-  const [lifeBalanceData] = useState<BalanceDataPoint[]>([]);
-  const [moodTrendData] = useState<MoodDataPoint[]>([]);
-  const [xpProgressData] = useState<XpDataPoint[]>([]);
+  const [lifeBalanceData, setLifeBalanceData] = useState<BalanceDataPoint[]>([]);
+  const [moodTrendData, setMoodTrendData] = useState<MoodDataPoint[]>([]);
+  const [xpProgressData, setXpProgressData] = useState<XpDataPoint[]>([]);
+  const [error, setError] = useState("");
   const hasData = lifeBalanceData.length > 0 || moodTrendData.length > 0 || xpProgressData.length > 0;
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const data = await getAnalytics();
+        setStats([
+          { label: "Memories Saved", value: data.summary?.memoryCount || 0, icon: Camera, color: "text-accent" },
+          { label: "Dreams Achieved", value: data.summary?.goalsCompleted || 0, icon: Star, color: "text-golden" },
+          { label: "Countries Visited", value: 0, icon: Globe, color: "text-calm" },
+          { label: "Challenges Done", value: data.summary?.journalFrequency || 0, icon: Flame, color: "text-amber" },
+          { label: "Milestones", value: data.summary?.lifeChapterCount || 0, icon: Milestone, color: "text-primary" },
+        ]);
+        setLifeBalanceData((data.growth || []).map((g: any) => ({ subject: g.category, value: g.value })));
+        setMoodTrendData((data.moodTrends || []).map((m: any) => ({ month: m.date?.slice(5), happy: m.score, grateful: 0, reflective: 0, calm: 0 })));
+        setXpProgressData([{ month: "Now", xp: data.summary?.xp || 0 }]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load analytics");
+      }
+    };
+    load();
+  }, []);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 relative">
@@ -94,6 +117,8 @@ const Analytics = () => {
         </h1>
         <p className="text-muted-foreground mt-1 font-handwritten text-lg">See how far you've come</p>
       </motion.div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {stats.map((s, i) => (

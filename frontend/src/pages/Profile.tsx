@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { getLevelInfo } from "@/lib/mock-data";
-import type { Badge as BadgeType, Memory, Friend } from "@/lib/mock-data";
+import { getLevelInfo } from "@/lib/level";
+type BadgeType = any; type Memory = any; type Friend = any;
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";

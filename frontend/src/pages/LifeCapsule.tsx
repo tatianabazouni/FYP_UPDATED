@@ -171,7 +171,7 @@ const MemoryCapsule3D = ({ memories, activeCategory, onSelectMemory, onAdd }: {
 
 /* ─── Main Page ─── */
 const LifeCapsule = () => {
-  const { memories, addMemory, deleteMemory } = useMemories();
+  const { memories, addMemory, deleteMemory, loading, error } = useMemories();
   const [selectedMemory, setSelectedMemory] = useState<MemoryItem | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -278,6 +278,9 @@ const LifeCapsule = () => {
       )}
 
       {/* Content */}
+      {loading && <p className="text-sm text-muted-foreground">Loading memories...</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
       <AnimatePresence mode="wait">
         {viewMode === "capsule" ? (
           <motion.div key="capsule" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>

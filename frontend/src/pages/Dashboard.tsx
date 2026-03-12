@@ -9,8 +9,8 @@ import { GoalProgressRing } from "@/components/GoalProgressRing";
 import { FloatingParticles } from "@/components/FloatingParticles";
 import { AnimatedCounter } from "@/components/AnimatedCounter";
 import { SkeletonCard } from "@/components/SkeletonCard";
-import { getLevelInfo } from "@/lib/mock-data";
-import type { Quest, Memory, Goal, Badge as BadgeType } from "@/lib/mock-data";
+import { getLevelInfo } from "@/lib/level";
+type Quest = any; type Memory = any; type Goal = any; type BadgeType = any;
 import {
   Star, Zap, BookOpen, Camera, Target, Trophy, Flame, Sparkles,
   Plus, Heart, PenLine, Upload, TrendingUp, ChevronRight, Calendar,
@@ -18,6 +18,9 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useRef } from "react";
+import { getDashboard } from "@/api/analyticsApi";
+import { getGoals } from "@/api/goalApi";
+import { getMemories } from "@/api/memoryApi";
 
 /* ─── Animations ─── */
 const stagger = {
@@ -289,17 +292,31 @@ const EmptyDashboardHero = () => (
 /* ─── Main Dashboard ─── */
 const Dashboard = () => {
   const [userName] = useState("Explorer");
-  const [userXp] = useState(0);
-  const [streakDays] = useState(0);
+  const [userXp, setUserXp] = useState(0);
+  const [streakDays, setStreakDays] = useState(0);
   const [dailyQuests] = useState<Quest[]>([]);
-  const [recentMemories] = useState<Memory[]>([]);
-  const [goals] = useState<Goal[]>([]);
+  const [recentMemories, setRecentMemories] = useState<Memory[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [badges] = useState<BadgeType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
+    const load = async () => {
+      try {
+        setIsLoading(true);
+        const [dashboard, goalData, memoryData] = await Promise.all([getDashboard(), getGoals(), getMemories()]);
+        setUserXp(dashboard.xp || 0);
+        setStreakDays(dashboard.streak || 0);
+        setGoals(goalData || []);
+        setRecentMemories(memoryData.slice(0, 5) || []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load dashboard");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
   }, []);
 
   const hasActivity = dailyQuests.length > 0 || recentMemories.length > 0 || goals.length > 0;
@@ -330,6 +347,7 @@ const Dashboard = () => {
       </div>
 
       <motion.div variants={stagger} initial="hidden" animate="visible" className="space-y-6 max-w-6xl mx-auto">
+        {error && <p className="text-sm text-destructive">{error}</p>}
         {/* Welcome Header */}
         <motion.div variants={fadeIn} className="relative">
           <FloatingParticles count={6} colors={["primary", "golden"]} className="h-20" />
