@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,10 +7,13 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { FloatingParticles } from "@/components/FloatingParticles";
 import { Search, UserPlus, Trophy, Target, Users, Sparkles, Heart } from "lucide-react";
+import { getConnections, requestConnection, searchUsers } from "@/api/connectionApi";
 
 interface Friend {
   id: string; name: string; avatar: string; level: number; levelTitle: string; sharedChallenges: number;
   type?: "friend" | "mentor" | "family";
+  status?: string;
+  email?: string;
 }
 
 const containerVariants = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.08 } } };
@@ -78,9 +81,37 @@ const EmptyConnectionsState = () => (
 );
 
 const Connections = () => {
-  const [friends] = useState<Friend[]>([]);
+  const [friends, setFriends] = useState<Friend[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Friend[]>([]);
+  const [error, setError] = useState("");
   const filteredFriends = friends.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const data = await getConnections();
+        setFriends(data.map((item: any) => ({ id: item.id, name: item.name, avatar: "", level: 1, levelTitle: item.type || "friend", sharedChallenges: 0, type: item.type, status: item.status, email: item.email })));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load connections");
+      }
+    };
+    load();
+  }, []);
+
+  useEffect(() => {
+    const run = async () => {
+      if (searchQuery.trim().length < 2) {
+        setSearchResults([]);
+        return;
+      }
+      try {
+        const users = await searchUsers(searchQuery.trim());
+        setSearchResults(users.map((u: any) => ({ id: u.id, name: u.name, avatar: "", level: 1, levelTitle: "Potential connection", sharedChallenges: 0, email: u.email })));
+      } catch {}
+    };
+    run();
+  }, [searchQuery]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 relative">
@@ -99,6 +130,26 @@ const Connections = () => {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input placeholder="Search connections..." className="pl-10 rounded-xl bg-card/50 border-border/40 backdrop-blur-sm" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
       </div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {searchResults.length > 0 && (
+        <Card className="rounded-2xl border-border/30 glass-card">
+          <CardContent className="p-4 space-y-3">
+            {searchResults.map((user) => (
+              <div key={user.id} className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">{user.name}</p>
+                  <p className="text-xs text-muted-foreground">{user.email}</p>
+                </div>
+                <Button size="sm" onClick={async () => { try { await requestConnection({ userId: user.id, type: "friend" }); setSearchResults((prev) => prev.filter((u) => u.id !== user.id)); } catch (err) { setError(err instanceof Error ? err.message : "Failed to send request"); } }}>
+                  <UserPlus className="h-4 w-4 mr-1" /> Connect
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {friends.length > 0 ? (
         <motion.div variants={containerVariants} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 gap-4">

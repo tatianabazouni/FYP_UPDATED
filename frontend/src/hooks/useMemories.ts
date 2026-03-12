@@ -1,45 +1,56 @@
-/**
- * useMemories — localStorage-backed hook for managing memories.
- * No mock data. All memories come from real user input.
- */
 import { useState, useCallback, useEffect } from "react";
 import type { MemoryItem } from "@/components/life-capsule/MemoryVaultScene";
+import { createMemory, deleteMemory as removeMemory, getMemories, updateMemory as patchMemory } from "@/api/memoryApi";
 
-const STORAGE_KEY = "lifeos-memories";
-
-function loadMemories(): MemoryItem[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveMemories(memories: MemoryItem[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(memories));
-}
+const mapMemory = (memory: any): MemoryItem => ({
+  id: String(memory.id || memory._id),
+  title: memory.title || "Untitled",
+  description: memory.description || "",
+  date: memory.date || new Date().toISOString(),
+  chapter: memory.chapter || memory.category || "reflections",
+  type: memory.type || "text",
+  imageUrl: memory.imageUrl || memory.mediaUrl || "",
+  location: memory.location || "",
+  people: Array.isArray(memory.people) ? memory.people : [],
+  emotion: memory.emotion || "calm",
+  tags: Array.isArray(memory.tags) ? memory.tags : [],
+  chapterId: memory.chapterId || memory.chapter,
+});
 
 export function useMemories() {
-  const [memories, setMemories] = useState<MemoryItem[]>(loadMemories);
+  const [memories, setMemories] = useState<MemoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    saveMemories(memories);
-  }, [memories]);
-
-  const addMemory = useCallback((memory: MemoryItem) => {
-    setMemories((prev) => [memory, ...prev]);
+    const load = async () => {
+      try {
+        setLoading(true);
+        const data = await getMemories();
+        setMemories(data.map(mapMemory));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load memories");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
   }, []);
 
-  const deleteMemory = useCallback((id: string) => {
+  const addMemory = useCallback(async (memory: MemoryItem) => {
+    const created = await createMemory(memory as unknown as Record<string, unknown>);
+    setMemories((prev) => [mapMemory(created), ...prev]);
+  }, []);
+
+  const deleteMemory = useCallback(async (id: string) => {
+    await removeMemory(id);
     setMemories((prev) => prev.filter((m) => m.id !== id));
   }, []);
 
-  const updateMemory = useCallback((id: string, updates: Partial<MemoryItem>) => {
-    setMemories((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, ...updates } : m))
-    );
+  const updateMemory = useCallback(async (id: string, updates: Partial<MemoryItem>) => {
+    const updated = await patchMemory(id, updates as Record<string, unknown>);
+    setMemories((prev) => prev.map((m) => (m.id === id ? mapMemory(updated) : m)));
   }, []);
 
-  return { memories, addMemory, deleteMemory, updateMemory };
+  return { memories, addMemory, deleteMemory, updateMemory, loading, error };
 }

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FloatingParticles } from "@/components/FloatingParticles";
 import { Sparkles, Heart, ArrowRight, ArrowLeft, User, Mail, Lock, Target, Eye } from "lucide-react";
+import { register } from "@/api/authApi";
 
 const steps = [
   { id: 1, title: "Create your account", subtitle: "Begin your life journey" },
@@ -38,6 +39,8 @@ const Register = () => {
   const [selectedVisions, setSelectedVisions] = useState<string[]>([]);
   const [firstGoal, setFirstGoal] = useState("");
   const [showConfetti, setShowConfetti] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const next = () => { setDirection(1); setStep((s) => Math.min(s + 1, 3)); };
   const prev = () => { setDirection(-1); setStep((s) => Math.max(s - 1, 1)); };
@@ -50,9 +53,18 @@ const Register = () => {
     });
   };
 
-  const handleFinish = () => {
-    setShowConfetti(true);
-    setTimeout(() => navigate("/onboarding"), 1500);
+  const handleFinish = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      await register({ name, email, password });
+      setShowConfetti(true);
+      setTimeout(() => navigate("/onboarding"), 1200);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Registration failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -141,7 +153,9 @@ const Register = () => {
               exit="exit"
               transition={{ type: "spring", stiffness: 250, damping: 28 }}
             >
-              {step === 1 && (
+              {error && <p className="text-sm text-destructive text-center pb-2">{error}</p>}
+
+          {step === 1 && (
                 <div className="space-y-5">
                   <div className="text-center mb-6">
                     <h1 className="font-display text-2xl font-bold text-foreground">{steps[0].title}</h1>
@@ -227,8 +241,8 @@ const Register = () => {
                   <div className="flex gap-3">
                     <Button variant="ghost" onClick={prev} className="flex-1"><ArrowLeft className="mr-2 h-4 w-4" /> Back</Button>
                     <motion.div className="flex-1" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                      <Button onClick={handleFinish} className="w-full gradient-primary text-primary-foreground shadow-glow-primary">
-                        <Heart className="mr-2 h-4 w-4" /> Start My Journey
+                      <Button onClick={handleFinish} disabled={loading || !password.trim()} className="w-full gradient-primary text-primary-foreground shadow-glow-primary">
+                        <Heart className="mr-2 h-4 w-4" /> {loading ? "Creating account..." : "Start My Journey"}
                       </Button>
                     </motion.div>
                   </div>
@@ -236,6 +250,8 @@ const Register = () => {
               )}
             </motion.div>
           </AnimatePresence>
+
+          {error && <p className="text-sm text-destructive text-center pb-2">{error}</p>}
 
           {step === 1 && (
             <p className="text-center text-sm text-muted-foreground pt-4">

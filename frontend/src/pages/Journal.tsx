@@ -4,6 +4,7 @@
  * Full-screen editor, heatmap calendar, mood trail, localStorage persistence.
  */
 import { useState, useEffect, useCallback } from "react";
+import { createJournalEntry, getJournalEntries, updateJournalEntry } from "@/api/journalApi";
 import { motion, AnimatePresence } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,48 +44,56 @@ const moodEmoji: Record<string, string> = {
   motivated: "☀️", calm: "🌙", sad: "☁️",
 };
 
-const STORAGE_KEY = "lifeos-journal-entries";
-const LIFEBOOK_KEY = "lifeos-lifebook";
-
-function loadEntries(): JournalEntry[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-function loadLifeBook(): LifeBook | null {
-  try {
-    const raw = localStorage.getItem(LIFEBOOK_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
-}
-
 const Journal = () => {
-  const [entries, setEntries] = useState<JournalEntry[]>(loadEntries);
+  const [entries, setEntries] = useState<JournalEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [showEditor, setShowEditor] = useState(false);
   const [expandedEntry, setExpandedEntry] = useState<JournalEntry | null>(null);
   const [viewMode, setViewMode] = useState<"scrapbook" | "book" | "list" | "lifebook">("scrapbook");
-  const [lifeBook, setLifeBook] = useState<LifeBook | null>(loadLifeBook);
+  const [lifeBook, setLifeBook] = useState<LifeBook | null>(null);
   const [showLifeBookSetup, setShowLifeBookSetup] = useState(false);
 
-  // Persist entries
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-  }, [entries]);
-
-  // Persist life book
-  useEffect(() => {
-    if (lifeBook) localStorage.setItem(LIFEBOOK_KEY, JSON.stringify(lifeBook));
-  }, [lifeBook]);
-
-  const handleSaveEntry = useCallback((entry: JournalEntry) => {
-    setEntries((prev) => {
-      const exists = prev.find((e) => e.id === entry.id);
-      if (exists) return prev.map((e) => (e.id === entry.id ? entry : e));
-      return [entry, ...prev];
-    });
+    const load = async () => {
+      try {
+        setLoading(true);
+        const data = await getJournalEntries();
+        setEntries(data.map((entry: any) => ({
+          id: String(entry._id || entry.id),
+          date: entry.date || entry.createdAt,
+          title: entry.title || "Untitled",
+          content: entry.content || "",
+          mood: entry.mood || "reflective",
+          tags: Array.isArray(entry.tags) ? entry.tags : [],
+          photos: [],
+          hasVoiceNote: false,
+          stickers: [],
+        })));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load journal");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
   }, []);
+
+  const handleSaveEntry = useCallback(async (entry: JournalEntry) => {
+    try {
+      const payload = { title: entry.title, content: entry.content, mood: entry.mood, tags: entry.tags, date: entry.date };
+      const exists = entries.find((e) => e.id === entry.id);
+      if (exists) {
+        const updated = await updateJournalEntry(entry.id, payload);
+        setEntries((prev) => prev.map((e) => (e.id === entry.id ? { ...entry, id: String(updated._id || updated.id) } : e)));
+      } else {
+        const created = await createJournalEntry(payload);
+        setEntries((prev) => [{ ...entry, id: String(created._id || created.id) }, ...prev]);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save entry");
+    }
+  }, [entries]);
 
   const handleCreateLifeBook = (title: string, authorName: string) => {
     const book = createLifeBook(title, authorName);
@@ -122,6 +131,9 @@ const Journal = () => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
+      {loading && <p className="text-sm text-muted-foreground">Loading journal...</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 15 }}

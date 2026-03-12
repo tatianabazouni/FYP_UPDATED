@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -15,6 +15,7 @@ import {
   Plus, Calendar, CheckCircle2, Circle, Sparkles, Zap, Target,
   Heart, Trophy, Rocket, ChevronRight, Clock, Flag, Star
 } from "lucide-react";
+import { createGoal, getGoals, updateGoal } from "@/api/goalApi";
 
 /* ─── Types ─── */
 interface Subtask { id: string; title: string; done: boolean; }
@@ -245,28 +246,65 @@ const Goals = () => {
   const [newDesc, setNewDesc] = useState("");
   const [newDeadline, setNewDeadline] = useState("");
   const [newPriority, setNewPriority] = useState<"high" | "medium" | "low">("medium");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const totalXp = goals.reduce((sum, g) => sum + (g.progress >= 100 ? g.xpReward : 0), 0);
   const completedGoals = goals.filter(g => g.progress >= 100).length;
 
-  const handleAddGoal = () => {
-    if (!newTitle.trim()) return;
-    const goal: Goal = {
-      id: Date.now().toString(),
-      title: newTitle,
-      description: newDesc,
-      deadline: newDeadline || new Date(Date.now() + 90 * 86400000).toISOString().split("T")[0],
-      progress: 0,
-      xpReward: newPriority === "high" ? 50 : newPriority === "medium" ? 30 : 15,
-      subtasks: [],
-      priority: newPriority,
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        const data = await getGoals();
+        setGoals(data.map((goal: any) => ({
+          id: String(goal.id || goal._id),
+          title: goal.title,
+          description: goal.description || "",
+          deadline: goal.deadline || new Date().toISOString().slice(0, 10),
+          progress: goal.progress || 0,
+          xpReward: goal.xpReward || 0,
+          subtasks: Array.isArray(goal.subtasks) ? goal.subtasks.map((s: any, i: number) => ({ id: String(s.id || s._id || i), title: s.title, done: !!s.done })) : [],
+          priority: goal.priority || "medium",
+        })));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load goals");
+      } finally {
+        setLoading(false);
+      }
     };
-    setGoals((prev) => [...prev, goal]);
-    setNewTitle(""); setNewDesc(""); setNewDeadline(""); setNewPriority("medium");
-    setShowAddDialog(false);
+    load();
+  }, []);
+
+  const handleAddGoal = async () => {
+    if (!newTitle.trim()) return;
+    try {
+      const created = await createGoal({
+        title: newTitle,
+        description: newDesc,
+        deadline: newDeadline || new Date(Date.now() + 90 * 86400000).toISOString().split("T")[0],
+        priority: newPriority,
+        subtasks: [],
+      });
+      const goal: Goal = {
+        id: String(created.id || created._id),
+        title: created.title,
+        description: created.description || "",
+        deadline: created.deadline || new Date().toISOString().slice(0, 10),
+        progress: created.progress || 0,
+        xpReward: created.xpReward || 0,
+        subtasks: Array.isArray(created.subtasks) ? created.subtasks.map((st: any, i: number) => ({ id: String(st.id || i), title: st.title, done: !!st.done })) : [],
+        priority: created.priority || "medium",
+      };
+      setGoals((prev) => [...prev, goal]);
+      setNewTitle(""); setNewDesc(""); setNewDeadline(""); setNewPriority("medium");
+      setShowAddDialog(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create goal");
+    }
   };
 
-  const toggleSubtask = (goalId: string, subtaskId: string) => {
+  const toggleSubtask = async (goalId: string, subtaskId: string) => {
     setGoals((prev) =>
       prev.map((g) => {
         if (g.id !== goalId) return g;
@@ -275,6 +313,17 @@ const Goals = () => {
         return { ...g, subtasks, progress };
       })
     );
+    const updatedGoal = goals.find((g) => g.id === goalId);
+    if (updatedGoal) {
+      const nextSubtasks = updatedGoal.subtasks.map((s) => (s.id === subtaskId ? { ...s, done: !s.done } : s));
+      const nextProgress = nextSubtasks.length > 0 ? Math.round((nextSubtasks.filter((s) => s.done).length / nextSubtasks.length) * 100) : 0;
+      try {
+        await updateGoal(goalId, { subtasks: nextSubtasks, progress: nextProgress });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to update goal");
+      }
+    }
+
     // Update expanded goal if viewing
     if (expandedGoal?.id === goalId) {
       setExpandedGoal((prev) => {
@@ -286,7 +335,7 @@ const Goals = () => {
     }
   };
 
-  const addSubtask = (goalId: string, title: string) => {
+  const addSubtask = async (goalId: string, title: string) => {
     const subtask: Subtask = { id: Date.now().toString(), title, done: false };
     setGoals((prev) =>
       prev.map((g) => {
@@ -296,6 +345,16 @@ const Goals = () => {
         return { ...g, subtasks, progress };
       })
     );
+    const goalAfter = goals.find((g) => g.id === goalId);
+    if (goalAfter) {
+      const nextSubtasks = [...goalAfter.subtasks, subtask];
+      const nextProgress = Math.round((nextSubtasks.filter((s) => s.done).length / nextSubtasks.length) * 100);
+      try {
+        await updateGoal(goalId, { subtasks: nextSubtasks, progress: nextProgress });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to update goal");
+      }
+    }
     if (expandedGoal?.id === goalId) {
       setExpandedGoal((prev) => {
         if (!prev) return prev;
@@ -345,6 +404,9 @@ const Goals = () => {
           </motion.div>
         </div>
       </motion.div>
+
+      {loading && <p className="text-sm text-muted-foreground">Loading goals...</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       {goals.length > 0 ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
